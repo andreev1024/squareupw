@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"regexp"
 	"strings"
 )
 
@@ -74,6 +75,23 @@ func (a API) Send(method, url string, reqData []byte) (httpResp *http.Response, 
 		err = errors.New(errorResp.Message)
 	}
 
+	return
+}
+
+//ExtractURLFromLinkHeader extracts url from Link header.
+func ExtractURLFromLinkHeader(header []string) (url string, err error) {
+	link := header[0]
+	pattern := "^<(.+)>;rel='next'$"
+	re := regexp.MustCompile(pattern)
+	result := re.FindStringSubmatch(link)
+
+	i := 1
+	if len(result)-1 >= i {
+		url := result[i]
+		return url, nil
+	}
+
+	err = errors.New("Invalid value for Link header")
 	return
 }
 

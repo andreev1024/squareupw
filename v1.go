@@ -1,6 +1,20 @@
 package squareupw
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"log"
+)
+
+//EmployeeRole.Permission
+const (
+	RegisterAccessSalesHistory        = "REGISTER_ACCESS_SALES_HISTORY"
+	RegisterApplyRestrictedDiscounts  = "REGISTER_APPLY_RESTRICTED_DISCOUNTS"
+	RegisterChangeSettings            = "REGISTER_CHANGE_SETTINGS"
+	RegisterEditItem                  = "REGISTER_EDIT_ITEM"
+	RegisterIssueRefunds              = "REGISTER_ISSUE_REFUNDS"
+	RegisterOpenCashDrawerOutsideSale = "REGISTER_OPEN_CASH_DRAWER_OUTSIDE_SALE"
+	RegisterViewSummaryReports        = "REGISTER_VIEW_SUMMARY_REPORTS"
+)
 
 //Merchant represents Merchant model.
 type Merchant struct {
@@ -57,6 +71,16 @@ type Employee struct {
 	UpdatedAt             string   `json:"updated_at"`
 }
 
+//EmployeeRole represents Employee role model.
+type EmployeeRole struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Permissions []string `json:"permissions"`
+	IsOwner     bool     `json:"is_owner"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
 //PhoneNumber represents PhoneNumber model.
 type PhoneNumber struct {
 	CallingCode string `json:"calling_code"`
@@ -105,6 +129,19 @@ type ListEmployeesParams struct {
 	Status         string `param:"status"`
 	ExternalID     string `param:"external_id"`
 	Limit          string `param:"limit"`
+}
+
+//RoleParams represents params for *Role methods.
+type RoleParams struct {
+	Name        string   `json:"name"`
+	Permissions []string `json:"permissions"`
+	IsOwner     bool     `json:"is_owner"`
+}
+
+//ListRolesParams represents params for ListRoles methods.
+type ListRolesParams struct {
+	Order string `param:"order"`
+	Limit string `param:"limit"`
 }
 
 func apiURL() string {
@@ -177,34 +214,27 @@ func (a API) UpdateEmployee(id string, p UpdateEmployeeParams) (resp Employee, e
 
 //ListEmployees provides summary information for all of a business's employees.
 //This endpoint might paginate its results. You should check `link`.
-//If it not empty - you can perform additional request.
+//If it not empty - you can perform additional request via ListEmployeesByLink method.
 func (a API) ListEmployees(p ListEmployeesParams) (resp []Employee, link string, err error) {
-	queryString, err := GetQueryStringByStruct(&p, "param", true)
-	if err != nil {
-		return
-	}
-
-	if len(queryString) > 1 {
-		queryString = "?" + queryString
-	}
-
-	url := apiURL() + "/me/employees" + queryString
-	method := MethodGet
-
-	httpResp, body, err := a.Send(method, url, nil)
+	endpointURL := apiURL() + "/me/employees"
+	body, link, err := a.list(&p, MethodGet, endpointURL, "")
 	if err != nil {
 		return
 	}
 
 	err = json.Unmarshal(body, &resp)
+	return
+}
+
+//ListEmployeesByLink is ListEmployees alias which get explicit url.
+func (a API) ListEmployeesByLink(url string) (resp []Employee, link string, err error) {
+	p := ListEmployeesParams{}
+	body, link, err := a.list(&p, MethodGet, "", url)
 	if err != nil {
 		return
 	}
 
-	if linkHeader, ok := httpResp.Header["Link"]; ok {
-		link = linkHeader[0]
-	}
-
+	err = json.Unmarshal(body, &resp)
 	return
 }
 
@@ -219,5 +249,112 @@ func (a API) RetrieveEmployee(id string) (resp Employee, err error) {
 	}
 
 	err = json.Unmarshal(body, &resp)
+	return
+}
+
+//CreateRole creates an employee role you can then assign to employees.
+func (a API) CreateRole(p RoleParams) (resp EmployeeRole, err error) {
+	url := apiURL() + "/me/roles"
+	method := MethodPost
+	data, err := json.Marshal(p)
+	if err != nil {
+		return
+	}
+
+	log.Printf("%s", data)
+
+	_, body, err := a.Send(method, url, data)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(body, &resp)
+	return
+}
+
+//ListRoles provides summary information for all of a business's employee roles.
+//This endpoint might paginate its results. You should check `link`.
+//If it not empty - you can perform additional request via ListRolesByLink method.
+func (a API) ListRoles(p ListRolesParams) (resp []EmployeeRole, link string, err error) {
+	endpointURL := apiURL() + "/me/roles"
+	body, link, err := a.list(&p, MethodGet, endpointURL, "")
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(body, &resp)
+	return
+}
+
+//ListRolesByLink is ListRoles alias which get explicit url.
+func (a API) ListRolesByLink(url string) (resp []EmployeeRole, link string, err error) {
+	p := ListRolesParams{}
+	body, link, err := a.list(&p, MethodGet, "", url)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(body, &resp)
+	return
+}
+
+//RetrieveRole provides the details for a single employee role.
+func (a API) RetrieveRole(id string) (resp EmployeeRole, err error) {
+	url := apiURL() + "/me/roles/" + id
+	method := MethodGet
+
+	_, body, err := a.Send(method, url, nil)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(body, &resp)
+	return
+}
+
+//UpdateRole modifies the details of an employee role.
+func (a API) UpdateRole(id string, p RoleParams) (resp EmployeeRole, err error) {
+	url := apiURL() + "/me/roles/" + id
+	method := MethodPut
+	data, err := json.Marshal(p)
+	if err != nil {
+		return
+	}
+
+	_, body, err := a.Send(method, url, data)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(body, &resp)
+	return
+}
+
+//list method is DRY method for all other List* methods.
+func (a API) list(p interface{}, method, endpointURL, url string) (body []byte, link string, err error) {
+	if len(url) < 1 {
+		queryString, e := GetQueryStringByStruct(p, "param", true)
+		if e != nil {
+			err = e
+			return
+		}
+
+		if len(queryString) > 1 {
+			queryString = "?" + queryString
+		}
+
+		url = endpointURL + queryString
+	}
+
+	log.Println(url)
+
+	resp, body, err := a.Send(method, url, nil)
+	if err != nil {
+		return
+	}
+
+	if linkHeader, ok := resp.Header["Link"]; ok {
+		link, err = ExtractURLFromLinkHeader(linkHeader)
+	}
 	return
 }
